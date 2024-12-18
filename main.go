@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"notes/mycrypto"
+
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 )
@@ -25,7 +27,7 @@ const (
 	dbname   = "counter"
 )
 
-func createTable() {
+func createTableNotes() {
 	query := `
     CREATE TABLE IF NOT EXISTS notes(
         id bigserial primary key,
@@ -40,6 +42,50 @@ func createTable() {
 
 	fmt.Println("Table created successfully")
 }
+
+func createTableUsers() {
+	query := `
+    CREATE TABLE IF NOT EXISTS users(
+        id bigserial primary key,
+		username text,
+		salt text,
+		sha text
+    );`
+
+	_, err := db.Exec(query)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Table created successfully")
+}
+
+func AddUser(username string, salt string, password string) {
+	query := `
+	INSERT INTO users(username,salt, sha) VALUES ($1,$2,$3)
+	`
+
+	_, err := db.Exec(query, username, salt, mycrypto.PasswordToHash(password, salt))
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+func GetUser(username string) (string, string, error) {
+	query := "SELECT salt, sha FROM users WHERE username = '$1';"
+	ans, err := db.Query(query, username)
+	if err == nil {
+		return "", "", err
+	}
+	var salt, sha string
+	err = ans.Scan(&salt, &sha)
+	if err == nil {
+		return "", "", err
+	}
+	return salt, sha, nil
+}
+
 func AddNote(username string, text string) {
 	query := `
 	INSERT INTO notes(username,note) VALUES ($1,$2)
@@ -298,6 +344,12 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
+		if action == "login" {
+
+		}
+		if action == "registration" {
+
+		}
 
 		// код состояния 400
 		w.WriteHeader(400)
@@ -306,6 +358,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	mycrypto.Init()
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, username, password, dbname)
 
 	var err error
@@ -331,7 +384,8 @@ func main() {
 				fmt.Println(err)
 			}
 	*/
-	createTable()
+	createTableNotes()
+	createTableUsers()
 	fmt.Println("Server Start on :8080")
 	http.HandleFunc("/", MainWeb)
 	http.ListenAndServe(":8080", nil)
