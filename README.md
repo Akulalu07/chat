@@ -6,7 +6,7 @@
 
 ## 📸 Логотип
 
-![Chamt Logo](assets/logo.png)
+![Chamt Logo](dock/assets/logo.png)
 
 ---
 
