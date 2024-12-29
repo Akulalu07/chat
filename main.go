@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"notes/mycrypto"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -25,7 +27,41 @@ const (
 	dbname   = "counter"
 )
 
-func createTable() {
+func GetLocalIP() (string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("failed to get interfaces: %v", err)
+	}
+
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", fmt.Errorf("failed to get addresses: %v", err)
+		}
+
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no valid local IP found")
+}
+func dropTable() {
+	query := `DROP TABLE notes;`
+	_, err := db.Exec(query)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Table dropped")
+}
+
+func createTableNotes() {
 	query := `
     CREATE TABLE IF NOT EXISTS notes(
         id bigserial primary key,
@@ -40,6 +76,50 @@ func createTable() {
 
 	fmt.Println("Table created successfully")
 }
+
+func createTableUsers() {
+	query := `
+    CREATE TABLE IF NOT EXISTS users(
+        id bigserial primary key,
+		username text,
+		salt text,
+		sha text
+    );`
+
+	_, err := db.Exec(query)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Table created successfully")
+}
+
+func AddUser(username string, salt string, password string) {
+	query := `
+	INSERT INTO users(username,salt, sha) VALUES ($1,$2,$3)
+	`
+
+	_, err := db.Exec(query, username, salt, mycrypto.PasswordToHash(password, salt))
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+func GetUser(username string) (string, string, error) {
+	query := "SELECT salt, sha FROM users WHERE username = '$1';"
+	ans, err := db.Query(query, username)
+	if err == nil {
+		return "", "", err
+	}
+	var salt, sha string
+	err = ans.Scan(&salt, &sha)
+	if err == nil {
+		return "", "", err
+	}
+	return salt, sha, nil
+}
+
 func AddNote(username string, text string) {
 	query := `
 	INSERT INTO notes(username,note) VALUES ($1,$2)
@@ -149,12 +229,12 @@ func (c *Clients) Notify() {
 	c.Lock()
 	defer c.Unlock()
 
-	for id, ch := range c.channels {
-		log.Printf("NOTIFY TO %v", id)
+	for _, ch := range c.channels {
+		//log.Printf("NOTIFY TO %v", id)
 		ch <- struct{}{}
 	}
 
-	log.Print("CLEARING ClientMap")
+	//log.Print("CLEARING ClientMap")
 	c.channels = make(ClientMap)
 }
 
@@ -164,7 +244,7 @@ func (c *Clients) NewClient() chan struct{} {
 	c.Lock()
 	defer c.Unlock()
 	c.channels[c.counter] = ch
-	log.Printf("NEW CLIENT %v", c.counter)
+	//log.Printf("NEW CLIENT %v", c.counter)
 	c.counter++
 	return ch
 }
@@ -247,7 +327,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 				howmuchid := int(howmuch)
 				notes, err = TakeFirst(howmuchid)
 			} else if logx == "Takesomelower" {
-				fmt.Println(command)
+				//fmt.Println(command)
 				howmuch, ok := command["howmuch"].(float64)
 				if !ok {
 					log.Println(command)
@@ -269,7 +349,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 			} else if logx == "Takesomebigger" {
 				//fmt.Println("tekesomenew")
 				some, ok := command["someid"].(float64)
-				fmt.Println(some, ok, command["someid"])
+				//fmt.Println(some, ok, command["someid"])
 				if !ok {
 
 					w.WriteHeader(401)
@@ -298,6 +378,14 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
+		if action == "login" {
+			w.WriteHeader(200)
+			return
+		}
+		if action == "registration" {
+			w.WriteHeader(200)
+			return
+		}
 
 		// код состояния 400
 		w.WriteHeader(400)
@@ -306,6 +394,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	mycrypto.Init()
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, username, password, dbname)
 
 	var err error
@@ -321,6 +410,12 @@ func main() {
 		log.Panic(err)
 	}
 	fmt.Println("Successfully connected to DataBase!")
+	var flag string
+	fmt.Println("Enter yes/not for drop table")
+	fmt.Scan(&flag)
+	if flag == "yes" {
+		dropTable()
+	}
 	/*
 			query := `
 		    DROP DATABASE counter
@@ -331,9 +426,11 @@ func main() {
 				fmt.Println(err)
 			}
 	*/
-	createTable()
+	createTableNotes()
+	createTableUsers()
+
 	fmt.Println("Server Start on :8080")
 	http.HandleFunc("/", MainWeb)
 	http.ListenAndServe(":8080", nil)
-
+	fmt.Println(GetLocalIP())
 }
