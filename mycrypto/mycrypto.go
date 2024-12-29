@@ -18,7 +18,7 @@ type Loger struct {
 
 var synbols = []byte("poiuytrewqzxcvbnmlkjhgfdsa")
 
-var localkey string
+var Localkey string
 
 func Generate_salt() string {
 	// 16 символов
@@ -36,7 +36,7 @@ func Init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	localkey = fmt.Sprintf("%s", data)
+	Localkey = fmt.Sprintf("%s", data)
 }
 
 func PasswordToHash(password, salt string) string {
@@ -46,7 +46,7 @@ func PasswordToHash(password, salt string) string {
 }
 
 func textToTextWithKey(mess Loger) string {
-	mac := hmac.New(sha256.New, []byte(localkey))
+	mac := hmac.New(sha256.New, []byte(Localkey))
 	mac.Write([]byte(mess.text + fmt.Sprintf("%d", mess.time)))
 	return string(mac.Sum(nil))
 }

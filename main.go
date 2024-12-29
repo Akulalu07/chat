@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"notes/mycrypto"
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"notes/mycrypto"
 
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
@@ -26,6 +26,40 @@ const (
 	password = "counter"
 	dbname   = "counter"
 )
+
+func GetLocalIP() (string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("failed to get interfaces: %v", err)
+	}
+
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", fmt.Errorf("failed to get addresses: %v", err)
+		}
+
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no valid local IP found")
+}
+func dropTable() {
+	query := `DROP TABLE notes;`
+	_, err := db.Exec(query)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Table dropped")
+}
 
 func createTableNotes() {
 	query := `
@@ -195,12 +229,12 @@ func (c *Clients) Notify() {
 	c.Lock()
 	defer c.Unlock()
 
-	for id, ch := range c.channels {
-		log.Printf("NOTIFY TO %v", id)
+	for _, ch := range c.channels {
+		//log.Printf("NOTIFY TO %v", id)
 		ch <- struct{}{}
 	}
 
-	log.Print("CLEARING ClientMap")
+	//log.Print("CLEARING ClientMap")
 	c.channels = make(ClientMap)
 }
 
@@ -210,7 +244,7 @@ func (c *Clients) NewClient() chan struct{} {
 	c.Lock()
 	defer c.Unlock()
 	c.channels[c.counter] = ch
-	log.Printf("NEW CLIENT %v", c.counter)
+	//log.Printf("NEW CLIENT %v", c.counter)
 	c.counter++
 	return ch
 }
@@ -293,7 +327,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 				howmuchid := int(howmuch)
 				notes, err = TakeFirst(howmuchid)
 			} else if logx == "Takesomelower" {
-				fmt.Println(command)
+				//fmt.Println(command)
 				howmuch, ok := command["howmuch"].(float64)
 				if !ok {
 					log.Println(command)
@@ -315,7 +349,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 			} else if logx == "Takesomebigger" {
 				//fmt.Println("tekesomenew")
 				some, ok := command["someid"].(float64)
-				fmt.Println(some, ok, command["someid"])
+				//fmt.Println(some, ok, command["someid"])
 				if !ok {
 
 					w.WriteHeader(401)
@@ -345,10 +379,12 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 
 		}
 		if action == "login" {
-
+			w.WriteHeader(200)
+			return
 		}
 		if action == "registration" {
-
+			w.WriteHeader(200)
+			return
 		}
 
 		// код состояния 400
@@ -374,6 +410,12 @@ func main() {
 		log.Panic(err)
 	}
 	fmt.Println("Successfully connected to DataBase!")
+	var flag string
+	fmt.Println("Enter yes/not for drop table")
+	fmt.Scan(&flag)
+	if flag == "yes" {
+		dropTable()
+	}
 	/*
 			query := `
 		    DROP DATABASE counter
@@ -386,8 +428,9 @@ func main() {
 	*/
 	createTableNotes()
 	createTableUsers()
+
 	fmt.Println("Server Start on :8080")
 	http.HandleFunc("/", MainWeb)
 	http.ListenAndServe(":8080", nil)
-
+	fmt.Println(GetLocalIP())
 }
