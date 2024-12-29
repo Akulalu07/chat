@@ -431,6 +431,7 @@ func main() {
 
 	fmt.Println("Server Start on :8080")
 	http.HandleFunc("/", MainWeb)
-	http.ListenAndServe(":8080", nil)
 	fmt.Println(GetLocalIP())
+	http.ListenAndServe(":8080", nil)
+
 }
