@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -27,6 +28,16 @@ const (
 	dbname   = "counter"
 )
 
+// Errors
+
+var notuser = errors.New("Not have")
+
+/*
+	type error{
+		id int64
+		message string
+	}
+*/
 func GetLocalIP() (string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -57,8 +68,12 @@ func dropTable() {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println("Table dropped")
+	query = `DROP TABLE users;`
+	_, err = db.Exec(query)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Tables dropped")
 }
 
 func createTableNotes() {
@@ -107,14 +122,18 @@ func AddUser(username string, salt string, password string) {
 }
 
 func GetUser(username string) (string, string, error) {
-	query := "SELECT salt, sha FROM users WHERE username = '$1';"
+	query := "SELECT salt, sha FROM users WHERE username = $1;"
 	ans, err := db.Query(query, username)
-	if err == nil {
+	if err != nil {
 		return "", "", err
+
 	}
 	var salt, sha string
+	if !ans.Next() {
+		return "", "", notuser
+	}
 	err = ans.Scan(&salt, &sha)
-	if err == nil {
+	if err != nil {
 		return "", "", err
 	}
 	return salt, sha, nil
@@ -303,12 +322,14 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Panic(err)
 		}
+
 		var command map[string]any
 		err = json.Unmarshal([]byte(body), &command)
 
 		if err != nil {
 			log.Panic(err)
 		}
+		fmt.Println(command)
 
 		action := command["action"]
 
@@ -379,10 +400,20 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 
 		}
 		if action == "login" {
-			w.WriteHeader(200)
-			return
-		}
-		if action == "registration" {
+			switch v := command["user"].(type) {
+			case string:
+				user := v
+				pass := command["pass"].(string)
+				fmt.Println(user)
+				_, _, cc := GetUser(user)
+				if errors.Is(cc, notuser) {
+					salt := mycrypto.Generate_salt()
+					fmt.Println("NEW PEN: ", user, pass, salt)
+
+					AddUser(username, salt, pass)
+				}
+			}
+
 			w.WriteHeader(200)
 			return
 		}
@@ -431,6 +462,7 @@ func main() {
 
 	fmt.Println("Server Start on :8080")
 	http.HandleFunc("/", MainWeb)
-	http.ListenAndServe(":8080", nil)
 	fmt.Println(GetLocalIP())
+	http.ListenAndServe(":8080", nil)
+
 }

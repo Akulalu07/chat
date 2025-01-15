@@ -69,6 +69,11 @@ function drawLogin(element) {
     document.getElementById('textbutton').onclick = async () => {
         user = document.getElementById('username').value;
         password = document.getElementById('password').value;
+        responce = await makeRequest({
+            action: "login",
+            user: user,
+            pass: password,
+        })
         location = "#notes"
     }
 
