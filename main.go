@@ -21,11 +21,11 @@ import (
 var db *sql.DB
 
 const (
-	host     = "127.0.0.1"
-	port     = 5432
-	username = "counter"
-	password = "counter"
-	dbname   = "counter"
+	dbhost     = "127.0.0.1"
+	dbport     = 5432
+	dbusername = "counter"
+	dbpassword = "counter"
+	dbname     = "counter"
 )
 
 // Errors
@@ -96,7 +96,7 @@ func createTableUsers() {
 	query := `
     CREATE TABLE IF NOT EXISTS users(
         id bigserial primary key,
-		username text,
+		username text UNIQUE,
 		salt text,
 		sha text
     );`
@@ -329,7 +329,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Panic(err)
 		}
-		fmt.Println(command)
+		//fmt.Println(command)
 
 		action := command["action"]
 
@@ -399,23 +399,42 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
-		if action == "login" {
+		if action == "registration" {
 			switch v := command["user"].(type) {
 			case string:
 				user := v
 				pass := command["pass"].(string)
-				fmt.Println(user)
-				_, _, cc := GetUser(user)
-				if errors.Is(cc, notuser) {
+				salt, sha, err := GetUser(user)
+				if errors.Is(err, notuser) && salt == "" && sha == "" {
 					salt := mycrypto.Generate_salt()
-					fmt.Println("NEW PEN: ", user, pass, salt)
-
-					AddUser(username, salt, pass)
+					AddUser(user, salt, pass)
+				} else if err == nil {
+					w.WriteHeader(400)
+					return
+				} else {
+					w.WriteHeader(502)
+					return
 				}
 			}
 
 			w.WriteHeader(200)
 			return
+		}
+		if action == "login" {
+			switch v := command["user"].(type) {
+			case string:
+				user := v
+				pass := command["pass"].(string)
+				salt, sha, err := GetUser(user)
+				if errors.Is(err, notuser) {
+					w.WriteHeader(403)
+					return
+				} else if err != nil {
+					w.WriteHeader(503)
+					return
+				}
+				fmt.Println(pass, salt, sha)
+			}
 		}
 
 		// код состояния 400
@@ -426,7 +445,7 @@ func MainWeb(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	mycrypto.Init()
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, username, password, dbname)
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbhost, dbport, dbusername, dbpassword, dbname)
 
 	var err error
 	db, err = sql.Open("postgres", psqlInfo)
