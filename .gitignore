@@ -1,0 +1,15 @@
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+term_chat/debug/
+term_chat/target/
+term_chat/Cargo.lock
+**/*.rs.bk
+*.pdb
+tmp/
+air.toml
